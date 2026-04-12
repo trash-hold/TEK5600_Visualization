@@ -15,21 +15,6 @@ using namespace H5;
 //  Primitives
 // ==================================================================================================
 
-// A struct to hold the raw data read from the files
-struct RawData{
-    size_t n_rows, n_cols; // dimensions of the data;
-    std::vector<float> x;
-    std::vector<float> y;
-
-    Vec2 at(size_t i, size_t j) const {
-        if (i >= n_rows || j >= n_cols) {
-            throw std::out_of_range("Index out of bounds");
-        }
-        size_t index = i*n_cols + j;
-        return Vec2(x[index], y[index]);
-    }
-};
-
 // Primitive for the vector field
 struct Vec2{
     float x, y;
@@ -71,6 +56,23 @@ struct Vec2{
         }
     }
 };
+
+
+// A struct to hold the raw data read from the files
+struct RawData{
+    size_t n_rows, n_cols; // dimensions of the data;
+    std::vector<float> x;
+    std::vector<float> y;
+
+    Vec2 at(size_t i, size_t j) const {
+        if (i >= n_rows || j >= n_cols) {
+            throw std::out_of_range("Index out of bounds");
+        }
+        size_t index = i*n_cols + j;
+        return Vec2(x[index], y[index]);
+    }
+};
+
 
 struct Particle{
     Vec2 position;
@@ -135,11 +137,11 @@ float bi_interpolate(float v00, float v01, float v10, float v11, float x_frac, f
     return v0*(1-y_frac) + v1*y_frac;
 }
 
-Vec2 bi_interpolate(const RawData &data, Vec2 pos)
+Vec2 bi_interpolate(const RawData* data, const Vec2 &pos)
 {
     // Calculate the indices of the four surrounding particles
-    size_t cols = data.n_cols;
-    size_t rows = data.n_rows;
+    size_t cols = data->n_cols;
+    size_t rows = data->n_rows;
 
     size_t col = static_cast<size_t>(pos.x);
     size_t row = static_cast<size_t>(pos.y);
@@ -149,10 +151,10 @@ Vec2 bi_interpolate(const RawData &data, Vec2 pos)
     float y_frac = pos.y - row;
 
     // Data
-    Vec2 v00 = data.at(row, col);
-    Vec2 v01 = data.at(row, col + 1);
-    Vec2 v10 = data.at(row + 1, col);
-    Vec2 v11 = data.at(row + 1, col + 1);
+    Vec2 v00 = data->at(row, col);
+    Vec2 v01 = data->at(row, col + 1);
+    Vec2 v10 = data->at(row + 1, col);
+    Vec2 v11 = data->at(row + 1, col + 1);
 
     float inter_x = bi_interpolate(v00.x, v01.x, v10.x, v11.x, x_frac, y_frac);
     float inter_y = bi_interpolate(v00.y, v01.y, v10.y, v11.y, x_frac, y_frac);
@@ -182,24 +184,11 @@ std::vector<Particle> getRandomSeed(RawData* const data, float particle_percenta
     {
         float rand_col = dis_x(gen);
         float rand_row = dis_y(gen);
-        size_t col = static_cast<size_t>(rand_col);
-        size_t row = static_cast<size_t>(rand_row);
-
-        float x_frac = rand_col - col;
-        float y_frac = rand_row - row;
-
-        Vec2 v00 = data.at(row, col);
-        Vec2 v01 = data.at(row, col + 1);
-        Vec2 v10 = data.at(row + 1, col);
-        Vec2 v11 = data.at(row + 1, col + 1);
-
-        float inter_x = bi_interpolate(v00.x, v01.x, v10.x, v11.x, x_frac, y_frac);
-        float inter_y = bi_interpolate(v00.y, v01.y, v10.y, v11.y, x_frac, y_frac);
 
         // Assign the position and velocity to the seed particle
         Particle p;
         p.position = Vec2(rand_col, rand_row);
-        p.velocity = Vec2(inter_x, inter_y);
+        p.velocity = bi_interpolate(data, Vec2(rand_col, rand_row));
         seed.push_back(p);
     }
 
@@ -232,13 +221,13 @@ std::vector<Particle> getUniformSeed(RawData* const data, size_t cell_distance)
             rand_row = dis(gen);
         
             // Getting surrounding points for interpolation
-            Vec2 v00 = data.at(row, col);
-            Vec2 v01 = data.at(row, col + 1);
-            Vec2 v10 = data.at(row + 1, col);
-            Vec2 v11 = data.at(row + 1, col + 1);
+            Vec2 v00 = data->at(row, col);
+            Vec2 v01 = data->at(row, col + 1);
+            Vec2 v10 = data->at(row + 1, col);
+            Vec2 v11 = data->at(row + 1, col + 1);
 
-            float inter_x = bi_interpolate(v00.x, v01.x, v10.x, v11.x, x_frac, y_frac);
-            float inter_y = bi_interpolate(v00.y, v01.y, v10.y, v11.y, x_frac, y_frac);
+            float inter_x = bi_interpolate(v00.x, v01.x, v10.x, v11.x, rand_col, rand_row);
+            float inter_y = bi_interpolate(v00.y, v01.y, v10.y, v11.y, rand_col, rand_row);
 
             // Assign the position and velocity to the seed particle
             Particle p;
@@ -260,15 +249,15 @@ struct Line{
 };
 
 
-std::vector<Line> eulerIntegrator(const std::vector<Particle>& seeds, const RawData &data, const float &step_size, const size_t &max_steps)
+std::vector<Line> eulerIntegrator(const std::vector<Particle>* seeds, const RawData* data, const float &step_size, const size_t &max_steps)
 {
     std::vector<Line> field_lines; 
-    field_lines.reserve(seeds.size()); // We compute field-lines for all generated seeds
+    field_lines.reserve(seeds->size()); // We compute field-lines for all generated seeds
     
-    size_t n_rows = data.n_rows;
-    size_t n_cols = data.n_cols;
+    size_t n_rows = data->n_rows;
+    size_t n_cols = data->n_cols;
 
-    for (const auto& seed : seeds)
+    for (const auto& seed : *seeds)
     {
         // Prepare line object
         Line f_line;
@@ -290,7 +279,7 @@ std::vector<Line> eulerIntegrator(const std::vector<Particle>& seeds, const RawD
             current_v = bi_interpolate(data, current_pos);
 
             // Calculate the new position using Euler's method
-            current_pos += current_v * step_size;
+            current_pos += current_v.normalized() * step_size;
 
             // Add the new point to the line
             f_line.line.push_back(Particle{current_pos, current_v});
@@ -307,7 +296,14 @@ int main(){
     RawData isabel_data;
     RawData metsim_data;
 
+    // Read file
     readH5File(isabel_file, &isabel_data);
+
+    // Generate seeds
+    std::vector<Particle> seeds = getUniformSeed(&isabel_data, 10);
+
+    // Calculate field lines
+    std::vector<Line> field_lines = eulerIntegrator(&seeds, &isabel_data, 0.1f, 100);
 
 
     return 0;
