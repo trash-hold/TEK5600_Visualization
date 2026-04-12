@@ -4,6 +4,7 @@
 #include <string>
 #include <random> 
 #include <cmath>
+#include <algorithm>
 
 // External Libraries
 #include <SFML/Graphics.hpp>
@@ -149,31 +150,30 @@ float bi_interpolate(float v00, float v01, float v10, float v11, float x_frac, f
     return v0*(1-y_frac) + v1*y_frac;
 }
 
-Vec2 bi_interpolate(const RawData* data, const Vec2 &pos)
+Vec2 bi_interpolate(const RawData* data, const Vec2& pos)
 {
-    // Calculate the indices of the four surrounding particles
-    size_t cols = data->n_cols;
-    size_t rows = data->n_rows;
+    const float eps = 1e-4f;
 
-    size_t col = static_cast<size_t>(pos.x);
-    size_t row = static_cast<size_t>(pos.y);
+    // For numerical stability we add -eps to the upper bound of the clamping, to avoid the case when we are exactly on the edge and try to access out of bounds data.
+    float x = std::clamp(pos.x, 0.0f, static_cast<float>(data->n_cols - 2) - eps);
+    float y = std::clamp(pos.y, 0.0f, static_cast<float>(data->n_rows - 2) - eps);
 
-    // Interpolate 
-    float x_frac = pos.x - col;
-    float y_frac = pos.y - row;
+    size_t col = static_cast<size_t>(x);
+    size_t row = static_cast<size_t>(y);
 
-    // Data
+    float x_frac = x - static_cast<float>(col);
+    float y_frac = y - static_cast<float>(row);
+
     Vec2 v00 = data->at(row, col);
-    Vec2 v01 = col + 1 < cols ? data->at(row, col + 1) : v00;
-    Vec2 v10 = row + 1 < rows ? data->at(row + 1, col) : v00;
-    Vec2 v11 = row + 1 < rows && col + 1 < cols ? data->at(row + 1, col + 1) : v00;
+    Vec2 v01 = data->at(row, col + 1);
+    Vec2 v10 = data->at(row + 1, col);
+    Vec2 v11 = data->at(row + 1, col + 1);
 
     float inter_x = bi_interpolate(v00.x, v01.x, v10.x, v11.x, x_frac, y_frac);
     float inter_y = bi_interpolate(v00.y, v01.y, v10.y, v11.y, x_frac, y_frac);
 
-    return {Vec2(inter_x, inter_y)};
+    return Vec2(inter_x, inter_y);
 }
-
 
 // ==================================================================================================
 //  Seed strategies
@@ -277,35 +277,113 @@ std::vector<Line> eulerIntegrator(const std::vector<Particle>* seeds, const RawD
         // Forward pass
         Vec2 f_current_pos = seed.position;
         Vec2 f_current_v = seed.velocity;
+        bool f_inbounds = true;
 
         // Backward pass
         Vec2 b_current_pos = seed.position;
         Vec2 b_current_v = -seed.velocity;
+        bool b_inbounds = true;
 
         deq_line.push_back(seed);
 
-        for(int i = 0; i < max_steps; i++)
+        for(int i = 0; i < max_steps && (f_inbounds || b_inbounds); i++)
         {
             // Check if the new position is out of bounds
             if (f_current_pos.x < 0 || f_current_pos.x >= n_cols || f_current_pos.y < 0 || f_current_pos.y >= n_rows) {
-                break; // Stop integrating if we go out of bounds
+                f_inbounds = false;
             }
 
             if (b_current_pos.x < 0 || b_current_pos.x >= n_cols || b_current_pos.y < 0 || b_current_pos.y >= n_rows) {
-                break; // Stop integrating if we go out of bounds
+                b_inbounds = false;
+            }
+            
+            if(f_inbounds)
+            {
+                // Sample the velcocity at the current positions
+                f_current_v = bi_interpolate(data, f_current_pos);
+                // Calculate the new positions using Euler's method
+                f_current_pos += f_current_v.normalized() * step_size;
+                // Add the new points to the line
+                deq_line.push_back(Particle{f_current_pos, f_current_v});
             }
 
-            // Sample the velcocity at the current positions
-            f_current_v = bi_interpolate(data, f_current_pos);
-            b_current_v = bi_interpolate(data, b_current_pos);
+            if(b_inbounds)
+            {
+                // Sample the velcocity at the current positions        
+                b_current_v = bi_interpolate(data, b_current_pos);
+                // Calculate the new positions using Euler's method
+                b_current_pos -= b_current_v.normalized() * step_size;
+                // Add the new points to the line
+                deq_line.push_front(Particle{b_current_pos, b_current_v});
+            }
 
-            // Calculate the new positions using Euler's method
-            f_current_pos += f_current_v.normalized() * step_size;
-            b_current_pos -= b_current_v.normalized() * step_size;
+        }
 
-            // Add the new points to the line
-            deq_line.push_back(Particle{f_current_pos, f_current_v});
-            deq_line.push_front(Particle{b_current_pos, b_current_v});
+        // Deque to vector
+        std::vector<Particle> particles(deq_line.begin(), deq_line.end());
+        field_lines.push_back(Line{std::move(particles)});
+    }
+    return field_lines;
+}
+
+Particle rk4_step(const Vec2& pos, const RawData* data, const float& step_size) {
+    Vec2 k1 = bi_interpolate(data, pos).normalized() * step_size;
+    Vec2 k2 = bi_interpolate(data, pos + k1*0.5f).normalized() * step_size;
+    Vec2 k3 = bi_interpolate(data, pos + k2*0.5f).normalized() * step_size;
+    Vec2 k4 = bi_interpolate(data, pos + k3).normalized() * step_size;
+
+    Vec2 new_pos = pos + (k1 + k2*2.0f + k3*2.0f + k4) * (1.0f / 6.0f);
+    return Particle{new_pos, bi_interpolate(data, new_pos)};
+}
+
+std::vector<Line> rk4Integrator(const std::vector<Particle>* seeds, const RawData* data, const float &step_size, const size_t &max_steps)
+{
+    std::vector<Line> field_lines; 
+    field_lines.reserve(seeds->size()); // We compute field-lines for all generated seeds
+
+    size_t n_rows = data->n_rows;
+    size_t n_cols = data->n_cols;
+
+    for (const auto& seed : *seeds)
+    {
+        // Prepare temporary deque for line object      
+        std::deque<Particle> deq_line;
+        
+        // Forward pass
+        Vec2 f_current_pos = seed.position;
+        bool f_inbounds = true;
+
+        // Backward pass
+        Vec2 b_current_pos = seed.position;
+        bool b_inbounds = true;
+
+        deq_line.push_back(seed);
+
+        for(int i = 0; i < max_steps && (f_inbounds || b_inbounds); i++)
+        {
+            // Check if the new position is out of bounds
+            if (f_current_pos.x < 0 || f_current_pos.x >= n_cols || f_current_pos.y < 0 || f_current_pos.y >= n_rows) {
+                f_inbounds = false;
+            }
+
+            if (b_current_pos.x < 0 || b_current_pos.x >= n_cols || b_current_pos.y < 0 || b_current_pos.y >= n_rows) {
+                b_inbounds = false;
+            }
+
+        
+            if(f_inbounds)
+            {
+                Particle forward = rk4_step(f_current_pos, data, step_size);
+                f_current_pos = forward.position;
+                deq_line.push_back(forward);
+            }
+
+            if(b_inbounds)
+            {
+                Particle backward = rk4_step(b_current_pos, data, -step_size);
+                b_current_pos = backward.position;
+                deq_line.push_front(backward);
+            }
 
         }
 
@@ -335,7 +413,7 @@ int main(){
     std::vector<Particle> seeds = getUniformSeed(&isabel_data, 10);
 
     // Calculate field lines
-    std::vector<Line> field_lines = eulerIntegrator(&seeds, &isabel_data, 0.1f, 100);
+    std::vector<Line> field_lines = rk4Integrator(&seeds, &isabel_data, 0.1f, 100);
 
     // Test of SFML window
     // ===================================================================================================
