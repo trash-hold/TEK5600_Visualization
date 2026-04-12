@@ -1,13 +1,17 @@
 #include <iostream>
 #include <vector>
+#include <deque>
 #include <string>
 #include <random> 
 #include <cmath>
+
+// External Libraries
+#include <SFML/Graphics.hpp>
 #include <H5Cpp.h>
 
 // Modify to your needs :)
-const std::string isabel_file = "./data/isabel_2d.h5";
-const std::string metsim_file = "./data/metsim_2d.h5";
+const std::string isabel_file = "../data/isabel_2d.h5";
+const std::string metsim_file = "../data/metsim_2d.h5";
 
 using namespace H5;
 
@@ -29,12 +33,20 @@ struct Vec2{
     Vec2 operator-(const Vec2& other) const {
         return Vec2(x - other.x, y - other.y);
     }
+    Vec2 operator-() const {
+        return Vec2(-x, -y);
+    }
     Vec2 operator*(float scalar) const {
         return Vec2(x * scalar, y * scalar);
     }
     Vec2 operator+=(const Vec2& other) {
         x += other.x;
         y += other.y;
+        return *this;
+    }
+    Vec2 operator-=(const Vec2& other) {
+        x -= other.x;
+        y -= other.y;
         return *this;
     }
 
@@ -152,9 +164,9 @@ Vec2 bi_interpolate(const RawData* data, const Vec2 &pos)
 
     // Data
     Vec2 v00 = data->at(row, col);
-    Vec2 v01 = data->at(row, col + 1);
-    Vec2 v10 = data->at(row + 1, col);
-    Vec2 v11 = data->at(row + 1, col + 1);
+    Vec2 v01 = col + 1 < cols ? data->at(row, col + 1) : v00;
+    Vec2 v10 = row + 1 < rows ? data->at(row + 1, col) : v00;
+    Vec2 v11 = row + 1 < rows && col + 1 < cols ? data->at(row + 1, col + 1) : v00;
 
     float inter_x = bi_interpolate(v00.x, v01.x, v10.x, v11.x, x_frac, y_frac);
     float inter_y = bi_interpolate(v00.y, v01.y, v10.y, v11.y, x_frac, y_frac);
@@ -253,42 +265,62 @@ std::vector<Line> eulerIntegrator(const std::vector<Particle>* seeds, const RawD
 {
     std::vector<Line> field_lines; 
     field_lines.reserve(seeds->size()); // We compute field-lines for all generated seeds
-    
+
     size_t n_rows = data->n_rows;
     size_t n_cols = data->n_cols;
 
     for (const auto& seed : *seeds)
     {
-        // Prepare line object
-        Line f_line;
-        f_line.line.reserve(max_steps); 
+        // Prepare temporary deque for line object      
+        std::deque<Particle> deq_line;
         
-        Vec2 current_pos = seed.position;
-        Vec2 current_v = seed.velocity;    
+        // Forward pass
+        Vec2 f_current_pos = seed.position;
+        Vec2 f_current_v = seed.velocity;
 
-        f_line.line.push_back(seed); // Add the seed as the first point of the line
+        // Backward pass
+        Vec2 b_current_pos = seed.position;
+        Vec2 b_current_v = -seed.velocity;
+
+        deq_line.push_back(seed);
 
         for(int i = 0; i < max_steps; i++)
         {
             // Check if the new position is out of bounds
-            if (current_pos.x < 0 || current_pos.x >= n_cols || current_pos.y < 0 || current_pos.y >= n_rows) {
+            if (f_current_pos.x < 0 || f_current_pos.x >= n_cols || f_current_pos.y < 0 || f_current_pos.y >= n_rows) {
                 break; // Stop integrating if we go out of bounds
             }
 
-            // Sample the velcocity at the current position
-            current_v = bi_interpolate(data, current_pos);
+            if (b_current_pos.x < 0 || b_current_pos.x >= n_cols || b_current_pos.y < 0 || b_current_pos.y >= n_rows) {
+                break; // Stop integrating if we go out of bounds
+            }
 
-            // Calculate the new position using Euler's method
-            current_pos += current_v.normalized() * step_size;
+            // Sample the velcocity at the current positions
+            f_current_v = bi_interpolate(data, f_current_pos);
+            b_current_v = bi_interpolate(data, b_current_pos);
 
-            // Add the new point to the line
-            f_line.line.push_back(Particle{current_pos, current_v});
+            // Calculate the new positions using Euler's method
+            f_current_pos += f_current_v.normalized() * step_size;
+            b_current_pos -= b_current_v.normalized() * step_size;
+
+            // Add the new points to the line
+            deq_line.push_back(Particle{f_current_pos, f_current_v});
+            deq_line.push_front(Particle{b_current_pos, b_current_v});
+
         }
 
-        field_lines.push_back(f_line);
+        // Deque to vector
+        std::vector<Particle> particles(deq_line.begin(), deq_line.end());
+        field_lines.push_back(Line{std::move(particles)});
     }
     return field_lines;
 }
+
+// ==================================================================================================
+//  Visualization
+// ==================================================================================================
+
+
 
 int main(){
     std::cout << "Starting processing of the files..." << std::endl;
@@ -305,6 +337,55 @@ int main(){
     // Calculate field lines
     std::vector<Line> field_lines = eulerIntegrator(&seeds, &isabel_data, 0.1f, 100);
 
+    // Test of SFML window
+    // ===================================================================================================
+    
+    // create the window
+    const size_t window_width = 1000;
+    const size_t window_height = 1000;
+    size_t cols = isabel_data.n_cols;
+    size_t rows = isabel_data.n_rows;
+
+    sf::RenderWindow window(sf::VideoMode({window_width, window_height}), "Test Window");
+
+    // run the program as long as the window is open
+    while (window.isOpen())
+    {
+        // check all the window's events that were triggered since the last iteration of the loop
+        while (const std::optional event = window.pollEvent())
+        {
+            // "close requested" event: we close the window
+            if (event->is<sf::Event::Closed>())
+                window.close();
+        }
+
+        // clear the window with white color
+        window.clear(sf::Color::White);
+        
+        // Setiting up margins to avoid drawing on the edge
+        float margin = 20.0f;  // pixels
+        float world_margin = margin * static_cast<float>(cols- 1) / window_width;
+
+        // Let the library handle mapping from world to screen coordinates
+        sf::View gridView;
+        gridView.setSize({cols - 1.0f - 2*world_margin, rows - 1.0f - 2*world_margin});
+        gridView.setCenter({cols / 2.0f, rows / 2.0f});
+        window.setView(gridView); 
+
+        // We process all lines and particles inside of them and draw them as line strips
+        for (const auto& line : field_lines)
+        {   
+            sf::VertexArray strip(sf::PrimitiveType::LineStrip);
+            for (const auto& particle : line.line)
+            {
+                strip.append(sf::Vertex{{particle.position.x, particle.position.y}, sf::Color::Black});
+            }
+            window.draw(strip);
+        }
+
+        // Display everthing on the window
+        window.display();
+    }
 
     return 0;
 }
