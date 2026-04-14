@@ -95,6 +95,83 @@ struct RawData{
     }
 };
 
+struct PixelPlane{
+    size_t n_rows, n_cols;
+    std::vector<float> value;   // Flattened 2D array
+    const float eps = 1e-4f;
+    
+    float at(size_t i, size_t j) const {
+        if (i >= n_rows || j >= n_cols || i < 0 || j < 0) {
+            throw std::out_of_range("Index out of bounds");
+        }
+        return value[i * n_cols + j];
+    }
+
+    void set(size_t i, size_t j, float val) {
+        if (i >= n_rows || j >= n_cols || i < 0 || j < 0) {
+            throw std::out_of_range("Index out of bounds");
+        }
+        value[i * n_cols + j] = val;
+    }
+
+    float bi_interpolate(const float &v00, const float& v01, const float& v10, const float& v11, const float &x_frac, const float &y_frac) const {
+        // The points are interprated as follows:
+        // (v10)---------(v11)
+        //    |             |
+        //    |        P    |
+        //    |         .   |     _
+        //    |             |     |
+        //    |             |     |  y_frac
+        // (v00)---------(v01)    -
+        //
+        //    |---------|  x_frac
+        // 
+        // And the billinear interpolation is done according to the formula found in the paper. 
+        
+        float v0 = v00*(1-x_frac) + v01*x_frac;
+        float v1 = v10*(1-x_frac) + v11*x_frac;
+
+        return v0*(1-y_frac) + v1*y_frac;
+    }
+
+    float interpolate(const Vec2& pos) const{
+        // For numerical stability we add -eps to the upper bound of the clamping, to avoid the case when we are exactly on the edge and try to access out of bounds data.
+        float x = std::clamp(pos.x, 0.0f, static_cast<float>(n_cols - 2) - eps);
+        float y = std::clamp(pos.y, 0.0f, static_cast<float>(n_rows - 2) - eps);
+
+        size_t col = static_cast<size_t>(x);
+        size_t row = static_cast<size_t>(y);
+
+        float x_frac = x - static_cast<float>(col);
+        float y_frac = y - static_cast<float>(row);
+
+        float v00 = at(row, col);
+        float v01 = at(row, col + 1);
+        float v10 = at(row + 1, col);
+        float v11 = at(row + 1, col + 1);
+
+        return bi_interpolate(v00, v01, v10, v11, x_frac, y_frac);
+    }
+
+
+    void min_max_normalize() 
+    {
+        if (value.empty()) return;
+
+        float min_val = *std::min_element(value.begin(), value.end());
+        float max_val = *std::max_element(value.begin(), value.end());
+
+        if (max_val == min_val) {
+            std::fill(value.begin(), value.end(), 0.0f);
+            return;
+        }
+
+        for (auto& val : value) {
+            val = (val - min_val) * 255.0f / (max_val - min_val);
+        }
+    }
+};
+
 
 struct Particle{
     Vec2 position;
@@ -227,6 +304,31 @@ float bi_interpolate(float v00, float v01, float v10, float v11, float x_frac, f
 }
 
 Vec2 bi_interpolate(const RawData* data, const Vec2& pos)
+{
+    const float eps = 1e-4f;
+
+    // For numerical stability we add -eps to the upper bound of the clamping, to avoid the case when we are exactly on the edge and try to access out of bounds data.
+    float x = std::clamp(pos.x, 0.0f, static_cast<float>(data->n_cols - 2) - eps);
+    float y = std::clamp(pos.y, 0.0f, static_cast<float>(data->n_rows - 2) - eps);
+
+    size_t col = static_cast<size_t>(x);
+    size_t row = static_cast<size_t>(y);
+
+    float x_frac = x - static_cast<float>(col);
+    float y_frac = y - static_cast<float>(row);
+
+    Vec2 v00 = data->at(row, col);
+    Vec2 v01 = data->at(row, col + 1);
+    Vec2 v10 = data->at(row + 1, col);
+    Vec2 v11 = data->at(row + 1, col + 1);
+
+    float inter_x = bi_interpolate(v00.x, v01.x, v10.x, v11.x, x_frac, y_frac);
+    float inter_y = bi_interpolate(v00.y, v01.y, v10.y, v11.y, x_frac, y_frac);
+
+    return Vec2(inter_x, inter_y);
+}
+
+Vec2 bi_interpolate(const PixelPlane* data, const Vec2& pos)
 {
     const float eps = 1e-4f;
 
@@ -394,7 +496,6 @@ std::vector<Line> rk4Integrator(const std::vector<Particle>* seeds, const RawDat
     }
     return field_lines;
 }
-
 
 // ==================================================================================================
 //  Seed strategies
@@ -662,11 +763,155 @@ std::vector<Line> getEvenSeed(RawData* const data, const float& line_distance, c
 
 
 // ==================================================================================================
-//  Visualization
+//  LIC
 // ==================================================================================================
 
+PixelPlane simpleLIC(const RawData* data, const float& step_size ,const size_t& kernel_length)
+{
+    // Preparing the noise plane with padding
+    PixelPlane noise = {
+        data->n_rows,
+        data->n_cols,
+        std::vector<float>(data->n_rows * data->n_cols) // We allocate the pixel plane with the padding included
+    };
 
+    // Fill the noise plane with random values
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_real_distribution<> dis(0.0f, 1.0f); // Less quantized than 0-255 int 
 
+    for (size_t i = 0; i < noise.value.size(); i++) {
+        noise.value[i] = dis(gen);
+    }
+
+    // Preparing the output plane
+    PixelPlane output = {
+        data->n_rows,
+        data->n_cols,
+        std::vector<float>(data->n_rows * data->n_cols) // Output plane does not need padding, so we allocate it with the original dimensions
+    };
+
+    // For the simple LIC we do convolution for each pixel
+    // By assuming the same size between RawData and output plane we get 1->1 mapping
+    for (size_t i = 0; i < data->n_rows; ++i) {
+        for (size_t j = 0; j < data->n_cols; ++j) {
+            std::vector<Particle> seed = {Particle{Vec2(j+0.5f, i+0.5f), bi_interpolate(data, Vec2(j+0.5f, i+0.5f))}}; // We sample at the center of the pixel
+
+            // The kernel length is interpreted as the radius of the convolution
+            Line new_line = rk4Integrator(&seed, data, step_size, kernel_length)[0]; // We get the field line
+
+            float sum = 0.0f;
+            if (new_line.line.size() == 0) {
+                output.set(i, j, noise.at(i, j)); // If the line is empty, we set the output to the noise value at that point
+                continue;
+            }
+
+            for (auto& particle : new_line.line) 
+            {
+                sum += noise.interpolate(particle.position);
+            }
+            
+            output.set(i, j, sum / new_line.line.size()); 
+        }
+    }
+
+    output.min_max_normalize(); // We normalize the output to [0, 255] range for better visualization
+    return output;
+}
+
+// ====================================================================================================
+// Visualization and main
+// ====================================================================================================
+
+void createGSImage(const PixelPlane* plane, sf::Image* img) {
+    img->resize({static_cast<unsigned>(plane->n_cols), static_cast<unsigned>(plane->n_rows)});
+
+    for (size_t i = 0; i < plane->n_rows; i++) // Rows
+    {
+        for (size_t j = 0; j < plane->n_cols; j++) // Cols
+        {
+            // Use at(row, col)
+            float val_float = plane->at(i, j);
+            std::uint8_t val = static_cast<std::uint8_t>(std::clamp(val_float, 0.0f, 255.0f));
+            
+            // setPixel uses (x, y) which is (col, row)
+            img->setPixel({static_cast<unsigned>(j), static_cast<unsigned>(i)}, sf::Color(val, val, val));
+        }
+    }
+}
+
+int main(){
+    std::cout << "Starting processing of the files..." << std::endl;
+
+    RawData isabel_data;
+    RawData metsim_data;
+
+    // Read file
+    readH5File(metsim_file, &isabel_data);
+
+    // Run LIC
+    PixelPlane lic_result = simpleLIC(&isabel_data, 0.1f, 30);
+
+    // Prepare objects for visualization
+    sf::Image lic_image;
+    createGSImage(&lic_result, &lic_image);
+
+    // Easiest way to display is through texture + sprite
+    sf::Texture lic_texture;
+
+    if (!lic_texture.loadFromImage(lic_image)) {
+        std::cerr << "Failed to load texture\n";
+        return 1;
+    }
+
+    sf::Sprite lic_sprite(lic_texture);
+
+    // Test of SFML window
+    // ===================================================================================================
+    
+    // create the window
+    const size_t window_width = 1000;
+    const size_t window_height = 1000;
+    size_t cols = isabel_data.n_cols;
+    size_t rows = isabel_data.n_rows;
+
+    sf::RenderWindow window(sf::VideoMode({window_width, window_height}), "Test Window");
+
+    // run the program as long as the window is open
+    while (window.isOpen())
+    {
+        // check all the window's events that were triggered since the last iteration of the loop
+        while (const std::optional event = window.pollEvent())
+        {
+            // "close requested" event: we close the window
+            if (event->is<sf::Event::Closed>())
+                window.close();
+        }
+
+        // clear the window with white color
+        window.clear(sf::Color::White);
+        
+        // Setiting up margins to avoid drawing on the edge
+        float margin = 20.0f;  // pixels
+        float world_margin = margin * static_cast<float>(cols- 1) / window_width;
+
+        // Let the library handle mapping from world to screen coordinates
+        sf::View gridView;
+        gridView.setSize({cols - 1.0f - 2*world_margin, rows - 1.0f - 2*world_margin});
+        gridView.setCenter({cols / 2.0f, rows / 2.0f});
+        window.setView(gridView); 
+
+        // Display the spirte
+        window.draw(lic_sprite);
+
+        // Display everthing on the window
+        window.display();
+    }
+
+    return 0;
+}
+
+/*
 int main(){
     std::cout << "Starting processing of the files..." << std::endl;
 
@@ -735,3 +980,4 @@ int main(){
 
     return 0;
 }
+*/
