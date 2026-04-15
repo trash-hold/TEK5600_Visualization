@@ -29,7 +29,7 @@ PixelPlane simpleLIC(const RawData* data, const float& step_size ,const size_t& 
     // By assuming the same size between RawData and output plane we get 1->1 mapping
     for (size_t i = 0; i < data->n_rows; ++i) {
         for (size_t j = 0; j < data->n_cols; ++j) {
-            std::vector<Particle> seed = {Particle{Vec2(j+0.5f, i+0.5f), bi_interpolate(data, Vec2(j+0.5f, i+0.5f))}}; // We sample at the center of the pixel
+            std::vector<Particle> seed = {Particle{Vec2(j+0.5f, i+0.5f), data->interpolate(Vec2(j+0.5f, i+0.5f))}}; // We sample at the center of the pixel
 
             // The kernel length is interpreted as the radius of the convolution
             Line new_line = rk4Integrator(&seed, data, step_size, kernel_length)[0]; // We get the field line

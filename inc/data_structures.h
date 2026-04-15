@@ -8,6 +8,27 @@
 
 #include "vec2.h"
 
+// Utility function for bilinear interpolation
+static float bi_interpolate(float v00, float v01, float v10, float v11, float x_frac, float y_frac) {
+    // The points are interprated as follows:
+    // (v10)---------(v11)
+    //    |             |
+    //    |        P    |
+    //    |         .   |     _
+    //    |             |     |
+    //    |             |     |  y_frac
+    // (v00)---------(v01)    -
+    //
+    //    |---------|  x_frac
+    // 
+    // And the billinear interpolation is done according to the formula found in the paper. 
+    
+    float v0 = v00*(1-x_frac) + v01*x_frac;
+    float v1 = v10*(1-x_frac) + v11*x_frac;
+
+    return v0*(1-y_frac) + v1*y_frac;
+}
+
 // A struct to hold the raw data read from the files
 struct RawData{
     size_t n_rows, n_cols; // dimensions of the data;
@@ -21,13 +42,37 @@ struct RawData{
 
         return true;
     }
-
+    
     Vec2 at(const size_t& i, const size_t& j) const {
         if (isValid(i, j) == false) {
             throw std::out_of_range("Index out of bounds");
         }
         size_t index = i*n_cols + j;
         return Vec2(x[index], y[index]);
+    }
+
+    Vec2 interpolate(const Vec2& pos) const {
+        const float eps = 1e-4f;
+
+        // For numerical stability we add -eps to the upper bound of the clamping, to avoid the case when we are exactly on the edge and try to access out of bounds data.
+        float x = std::clamp(pos.x, 0.0f, static_cast<float>(n_cols - 2) - eps);
+        float y = std::clamp(pos.y, 0.0f, static_cast<float>(n_rows - 2) - eps);
+
+        size_t col = static_cast<size_t>(x);
+        size_t row = static_cast<size_t>(y);
+
+        float x_frac = x - static_cast<float>(col);
+        float y_frac = y - static_cast<float>(row);
+
+        Vec2 v00 = at(row, col);
+        Vec2 v01 = at(row, col + 1);
+        Vec2 v10 = at(row + 1, col);
+        Vec2 v11 = at(row + 1, col + 1);
+
+        float inter_x = bi_interpolate(v00.x, v01.x, v10.x, v11.x, x_frac, y_frac);
+        float inter_y = bi_interpolate(v00.y, v01.y, v10.y, v11.y, x_frac, y_frac);
+
+        return Vec2(inter_x, inter_y);
     }
 };
 

@@ -23,7 +23,7 @@ std::vector<Particle> getRandomSeed(RawData* const data, float particle_percenta
         // Assign the position and velocity to the seed particle
         Particle p;
         p.position = Vec2(rand_col, rand_row);
-        p.velocity = bi_interpolate(data, Vec2(rand_col, rand_row));
+        p.velocity = data->interpolate(Vec2(rand_col, rand_row));
         seed.push_back(p);
     }
 
@@ -187,7 +187,7 @@ std::vector<Line> getEvenSeed(RawData* const data, const float& line_distance, c
         float rand_col = dis_x(gen);
         float rand_row = dis_y(gen);
         
-        Vec2 velocity = bi_interpolate(data, Vec2(rand_col, rand_row));
+        Vec2 velocity = data->interpolate(Vec2(rand_col, rand_row));
 
         if (velocity.length() > 1e-3f) // We skip points with very low velocity to avoid drawing field lines in the areas where there is no flow
         {
@@ -248,7 +248,7 @@ std::vector<Line> getEvenSeed(RawData* const data, const float& line_distance, c
                 {
                     if (data->isValid(static_cast<size_t>(candidate.y), static_cast<size_t>(candidate.x)) && hash.isTooClose(candidate, lineID) == false) 
                     {
-                        seed_queue.push_back(Particle{candidate, bi_interpolate(data, candidate)});
+                        seed_queue.push_back(Particle{candidate, data->interpolate(candidate)});
                     }
                 }
             }
