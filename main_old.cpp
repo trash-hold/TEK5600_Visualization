@@ -383,12 +383,10 @@ std::vector<Line> eulerIntegrator(const std::vector<Particle>* seeds, const RawD
         
         // Forward pass
         Vec2 f_current_pos = seed.position;
-        Vec2 f_current_v = seed.velocity;
         bool f_inbounds = true;
 
         // Backward pass
         Vec2 b_current_pos = seed.position;
-        Vec2 b_current_v = -seed.velocity;
         bool b_inbounds = true;
 
         deq_line.push_back(seed);
@@ -502,6 +500,7 @@ std::vector<Line> rk4Integrator(const std::vector<Particle>* seeds, const RawDat
 // ==================================================================================================
 std::vector<Particle> getRandomSeed(RawData* const data, float particle_percentage)
 {
+    const float eps = 1e-6;
     size_t num_particles = static_cast<size_t>(data->n_rows * data->n_cols * particle_percentage);
 
     // Initialize the particle vector
