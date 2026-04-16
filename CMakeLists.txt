@@ -9,39 +9,27 @@ find_package(SFML 3 REQUIRED COMPONENTS Graphics)
 # Get all subdirectories in exercises/
 file(GLOB EXERCISE_DIRS LIST_DIRECTORIES true "exercises/*")
 
-# For each exercise directory, create an executable
+# For each exercise directory, create an executable for every .cpp file in that directory
 foreach(EXERCISE_DIR ${EXERCISE_DIRS})
     if(IS_DIRECTORY ${EXERCISE_DIR})
         get_filename_component(EXERCISE_NAME ${EXERCISE_DIR} NAME)
-        
-        # Find the main.cpp file in the exercise directory
-        file(GLOB MAIN_FILE "${EXERCISE_DIR}/main.cpp")
-        
-        if(MAIN_FILE)
-            add_executable(${EXERCISE_NAME}_exercise 
-                ${MAIN_FILE}
+
+        file(GLOB CPP_FILES "${EXERCISE_DIR}/*.cpp")
+        foreach(CPP_FILE ${CPP_FILES})
+            get_filename_component(CPP_NAME ${CPP_FILE} NAME_WE)
+            set(EXE_NAME "${EXERCISE_NAME}_${CPP_NAME}")
+
+            add_executable(${EXE_NAME}
+                ${CPP_FILE}
                 src/helpers.cpp
                 src/integrators.cpp
                 src/seeds.cpp
                 src/lic.cpp
                 src/visualization.cpp
             )
-            
-            target_include_directories(${EXERCISE_NAME}_exercise PRIVATE ${HDF5_INCLUDE_DIRS} inc/)
-            target_link_libraries(${EXERCISE_NAME}_exercise PRIVATE ${HDF5_CXX_LIBRARIES} SFML::Graphics)
-        endif()
+
+            target_include_directories(${EXE_NAME} PRIVATE ${HDF5_INCLUDE_DIRS} inc/)
+            target_link_libraries(${EXE_NAME} PRIVATE ${HDF5_CXX_LIBRARIES} SFML::Graphics)
+        endforeach()
     endif()
 endforeach()
-
-# Original combined exercise (optional)
-add_executable(ex1_test 
-    main.cpp
-    src/helpers.cpp
-    src/integrators.cpp
-    src/seeds.cpp
-    src/lic.cpp
-    src/visualization.cpp
-)
-
-target_include_directories(ex1_test PRIVATE ${HDF5_INCLUDE_DIRS} inc/)
-target_link_libraries(ex1_test PRIVATE ${HDF5_CXX_LIBRARIES} SFML::Graphics)

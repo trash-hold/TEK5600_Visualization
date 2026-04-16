@@ -126,12 +126,13 @@ std::vector<Line> rk4Integrator(const std::vector<Particle> *seeds, const RawDat
                 {
                     Particle forward = rk4_step(f_current_pos, data, step_size);
                     f_current_pos = forward.position;
-                    // Add the new point to the line
-                    deq_line.push_back(forward);
 
                     // Check for weak field
                     if (forward.velocity.x * forward.velocity.x + forward.velocity.y*forward.velocity.y < EPS_SQ)
                         f_inbounds = false;
+
+                    else
+                        deq_line.push_back(forward);
 
                 }
                 else
@@ -144,12 +145,12 @@ std::vector<Line> rk4Integrator(const std::vector<Particle> *seeds, const RawDat
                 {
                     Particle backward = rk4_step(b_current_pos, data, -step_size);
                     b_current_pos = backward.position;
-                    // Add the new point to the line
-                    deq_line.push_front(backward);
 
                     // Check for weak field
                     if (backward.velocity.x * backward.velocity.x + backward.velocity.y * backward.velocity.y < EPS_SQ)
                         b_inbounds = false;
+                    else
+                        deq_line.push_front(backward); // Add the new point to the line
                 }
                 else
                     b_inbounds = false;

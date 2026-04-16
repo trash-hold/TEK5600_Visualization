@@ -1,8 +1,13 @@
 #include "seeds.h"
 
+#define MIN_PERC_LINE 7e-1f
+#define MIN_LINE_LEN 30
+#define MIN_SEED_MAG 1e-4f
+#define MAX_SEED_TRIES 1000
+#define SEED_PERCENTAGE 5e-2f
+
 std::vector<Particle> getRandomSeed(RawData* const data, float particle_percentage)
 {
-    const float eps = 1e-6;
     size_t num_particles = static_cast<size_t>(data->n_rows * data->n_cols * particle_percentage);
 
     // Initialize the particle vector
@@ -55,19 +60,10 @@ std::vector<Particle> getUniformSeed(RawData* const data, size_t cell_distance)
             rand_col = dis(gen);
             rand_row = dis(gen);
         
-            // Getting surrounding points for interpolation
-            Vec2 v00 = data->at(row, col);
-            Vec2 v01 = data->at(row, col + 1);
-            Vec2 v10 = data->at(row + 1, col);
-            Vec2 v11 = data->at(row + 1, col + 1);
-
-            float inter_x = bi_interpolate(v00.x, v01.x, v10.x, v11.x, rand_col, rand_row);
-            float inter_y = bi_interpolate(v00.y, v01.y, v10.y, v11.y, rand_col, rand_row);
-
             // Assign the position and velocity to the seed particle
             Particle p;
             p.position = Vec2(col + rand_col, row + rand_row);
-            p.velocity = Vec2(inter_x, inter_y);
+            p.velocity = data->interpolate(p.position);
             seed.push_back(p);
         }
     }
@@ -83,6 +79,8 @@ bool growFieldLine(SpatialHash& hash, const RawData* data, std::vector<Line>& fi
     }
 
     std::deque<Particle> newLine;
+    Particle seedParticle = {seed, data->interpolate(seed)};
+    newLine.push_back(seedParticle); // Start with the seed itself
     
     // Using RK4 integrator for better accuracy
     Vec2 f_current_pos = seed;
@@ -140,9 +138,9 @@ bool growFieldLine(SpatialHash& hash, const RawData* data, std::vector<Line>& fi
     }
 
     // The algorithm will have problems with longer lines, so we accept lines even if they don't have the "nominal" length
-    size_t min_length = static_cast<size_t>(max_steps * 0.7f);
-    if (min_length < 30) // We set a lower bound on the minimum length, to avoid accepting very short lines that are not informative
-        min_length = 30;
+    size_t min_length = static_cast<size_t>(max_steps * MIN_PERC_LINE);
+    if (min_length < MIN_LINE_LEN) // We set a lower bound on the minimum length, to avoid accepting very short lines that are not informative
+        min_length = MIN_LINE_LEN;
 
     if (newLine.size() < min_length && ended_by_distance) 
     {
@@ -181,15 +179,15 @@ std::vector<Line> getEvenSeed(RawData* const data, const float& line_distance, c
 
     Particle start_seed;
 
-    // We try max 1000 seed points
-    for(int i=0; i < 1000; i++)
+    // We try max MAX_SEED_TRIES seed points
+    for(int i=0; i < MAX_SEED_TRIES; i++)
     {
         float rand_col = dis_x(gen);
         float rand_row = dis_y(gen);
         
         Vec2 velocity = data->interpolate(Vec2(rand_col, rand_row));
 
-        if (velocity.length() > 1e-3f) // We skip points with very low velocity to avoid drawing field lines in the areas where there is no flow
+        if (velocity.length() > MIN_SEED_MAG) // We skip points with very low velocity to avoid drawing field lines in the areas where there is no flow
         {
             start_seed.position = Vec2(rand_col, rand_row);
             start_seed.velocity = velocity;
@@ -199,7 +197,7 @@ std::vector<Line> getEvenSeed(RawData* const data, const float& line_distance, c
     }
 
     // We check if the seed is valid
-    if(start_seed.velocity.length() < 1e-3f)
+    if(start_seed.velocity.length() < MIN_SEED_MAG)
     {
         std::cerr << "Failed to find a valid seed point after 1000 attempts." << std::endl;
         return field_lines; // Return empty vector
@@ -210,7 +208,7 @@ std::vector<Line> getEvenSeed(RawData* const data, const float& line_distance, c
     seed_queue.push_back(start_seed);
 
     // To avoid seed explosion, only portion of the seeds are picked
-    uint seed_skip = static_cast<uint>(line_distance * 0.05f / step_size);
+    uint seed_skip = static_cast<uint>(line_distance * SEED_PERCENTAGE / step_size);
 
     if (seed_skip < 1) {
         seed_skip = 1;
@@ -227,26 +225,26 @@ std::vector<Line> getEvenSeed(RawData* const data, const float& line_distance, c
         {
             // If the line was successfully grown, we add new seeds at a distance of line_distance from the line points
             const Line& new_line = field_lines.back();
-            for (int i = 0; i < new_line.line.size(); i+=seed_skip)
+            for (int i = 0; i < new_line.line.size(); i++)
             {
 
                 Particle particle = new_line.line[i];
                 Vec2 pos = particle.position;
                 
                 // We check if the velocity at the point is not too low, to avoid placing seeds in areas with no flow
-                if (particle.velocity.length() < 1e-4f)
+                if (particle.velocity.length() < MIN_SEED_MAG)
                     continue;
 
                 // We add seeds in that are perpendicular to the velocity vector at the point
                 Vec2 perp = Vec2(-particle.velocity.y, particle.velocity.x).normalized();
                 std::vector<Vec2> candidate_seeds = {
-                    pos + perp * line_distance, // Perpendicular in one direction
-                    pos - perp * line_distance  // Perpendicular in the other direction
+                    (pos + perp * line_distance), // Perpendicular in one direction
+                    (pos - perp * line_distance)  // Perpendicular in the other direction
                 };
 
                 for (const auto& candidate : candidate_seeds) 
                 {
-                    if (data->isValid(static_cast<size_t>(candidate.y), static_cast<size_t>(candidate.x)) && hash.isTooClose(candidate, lineID) == false) 
+                    if (data->isValid(static_cast<size_t>(candidate.x), static_cast<size_t>(candidate.y)) && hash.isTooClose(candidate, lineID) == false) 
                     {
                         seed_queue.push_back(Particle{candidate, data->interpolate(candidate)});
                     }
