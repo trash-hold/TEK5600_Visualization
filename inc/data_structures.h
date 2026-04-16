@@ -8,6 +8,8 @@
 
 #include "vec2.h"
 
+#define D_TEST_TOL 9e-1
+
 // Utility function for bilinear interpolation
 static float bi_interpolate(float v00, float v01, float v10, float v11, float x_frac, float y_frac) {
     // The points are interprated as follows:
@@ -171,7 +173,7 @@ class SpatialHash{
         float d_test;   // Test distance for checking proximity = 0.5 d_sep
 
     public:
-        SpatialHash(float separation) : d_sep(separation*2.0f) {d_test = 0.9*separation;}
+        SpatialHash(float separation) : d_sep(separation*2.0f) {d_test = D_TEST_TOL*separation;}
 
         long long getKey(const Vec2& pos) const {
             int x_index = static_cast<int>(std::floor(pos.x / d_sep));

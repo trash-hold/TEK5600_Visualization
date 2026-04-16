@@ -1,5 +1,6 @@
 #include "seeds.h"
 
+#define EPS_SQ 1e-8
 #define MIN_PERC_LINE 7e-1f
 #define MIN_LINE_LEN 30
 #define MIN_SEED_MAG 1e-4f
@@ -94,47 +95,60 @@ bool growFieldLine(SpatialHash& hash, const RawData* data, std::vector<Line>& fi
     {
         // Check if the new position is out of bounds
         // Forward step
-        if (data->isValid(static_cast<size_t>(f_current_pos.y), static_cast<size_t>(f_current_pos.x))) 
+        if(f_inbounds)
         {
-            // Standard step
-            Particle forward = rk4_step(f_current_pos, data, step_size);
-            f_current_pos = forward.position;
-            
-            // Checking if the new point is too close to existing lines
-            if (hash.isTooClose(f_current_pos, lineID) == false) 
-                newLine.push_back(forward);
+            if (data->isValid(static_cast<size_t>(f_current_pos.y), static_cast<size_t>(f_current_pos.x))) 
+            {
+                // Standard step
+                Particle forward = rk4_step(f_current_pos, data, step_size);
+                f_current_pos = forward.position;
+
+                // Check for weak field
+                if (forward.velocity.x * forward.velocity.x + forward.velocity.y*forward.velocity.y < EPS_SQ)
+                    f_inbounds = false;
+                // Checking if the new point is too close to existing lines
+                else if (hash.isTooClose(f_current_pos, lineID) == false) 
+                    newLine.push_back(forward);
+                else
+                {
+                    f_inbounds = false;
+                    ended_by_distance = true;
+                }
+                    
+                
+            }
             else
             {
                 f_inbounds = false;
-                ended_by_distance = true;
             }
-                
-            
         }
-        else
-        {
-            f_inbounds = false;
-        }
+        
 
         // Backward step
-        if (data->isValid(static_cast<size_t>(b_current_pos.y), static_cast<size_t>(b_current_pos.x))) 
+        if(b_inbounds)
         {
-            Particle backward = rk4_step(b_current_pos, data, -step_size);
-            b_current_pos = backward.position;
+            if (data->isValid(static_cast<size_t>(b_current_pos.y), static_cast<size_t>(b_current_pos.x))) 
+            {
+                Particle backward = rk4_step(b_current_pos, data, -step_size);
+                b_current_pos = backward.position;
 
-            if (hash.isTooClose(b_current_pos, lineID) == false) 
-                newLine.push_front(backward);
+                // Check for weak field
+                if (backward.velocity.x * backward.velocity.x + backward.velocity.y*backward.velocity.y < EPS_SQ)
+                    f_inbounds = false;
+                else if (hash.isTooClose(b_current_pos, lineID) == false) 
+                    newLine.push_front(backward);
+                else
+                {
+                    b_inbounds = false;
+                    ended_by_distance = true;
+                }
+            }
             else
             {
                 b_inbounds = false;
-                ended_by_distance = true;
             }
         }
-        else
-        {
-             b_inbounds = false;
-        }
-
+        
     }
 
     // The algorithm will have problems with longer lines, so we accept lines even if they don't have the "nominal" length

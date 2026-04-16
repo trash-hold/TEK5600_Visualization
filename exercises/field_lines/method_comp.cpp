@@ -54,7 +54,8 @@ int main() {
     const float step_size = 0.1f; // constant
 
     // Different parameter sets for each method
-    /* 
+    
+    /*
     // Isabel dataset settings
     const std::vector<RandomParams> random_params = {
         {100, 0.001f},
@@ -78,23 +79,24 @@ int main() {
 
     // Metsim dataset settings
     const std::vector<RandomParams> random_params = {
-        {50, 0.01f},
         {100, 0.01f},
         {200, 0.01f},
-        {500, 0.01f}
+        {500, 0.01f},
+        {800, 0.01f}
     };
     const std::vector<UniformParams> uniform_params = {
-        {50, 10},
         {100, 10},
         {200, 10},
-        {500, 10}
+        {500, 10},
+        {800, 10}
     };
     const std::vector<EvenParams> even_params = {
-        {50, 3.0f},
-        {100, 3.0f},
-        {200, 3.0f},
-        {500, 3.0f}
+        {100, 2.0f},
+        {200, 2.0f},
+        {500, 2.0f},
+        {800, 2.0f}
     };
+
 
     const std::filesystem::path output_dir = "../exercises/field_lines/img";
     std::filesystem::create_directories(output_dir);

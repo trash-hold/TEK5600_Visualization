@@ -87,9 +87,23 @@ Particle rk4_step(const Vec2 &pos, const RawData *data, const float &step_size)
         return Particle{pos, k1};
 
     k1 = k1.normalized() * step_size;
-    Vec2 k2 = data->interpolate(pos + k1 * 0.5f).normalized() * step_size;
-    Vec2 k3 = data->interpolate(pos + k2 * 0.5f).normalized() * step_size;
-    Vec2 k4 = data->interpolate(pos + k3).normalized() * step_size;
+    
+    Vec2 k2 = data->interpolate(pos + k1 * 0.5f);
+    if(k2.x*k2.x + k2.y*k2.y < EPS_SQ)
+        return Particle{pos, k2};
+    k2 = k2.normalized() * step_size;
+
+    Vec2 k3 = data->interpolate(pos + k2 * 0.5f);
+    if(k3.x*k3.x + k3.y*k3.y < EPS_SQ)
+        return Particle{pos, k3};
+
+    k3 = k3.normalized() * step_size;
+
+    Vec2 k4 = data->interpolate(pos + k3);
+    if(k4.x*k4.x + k4.y*k4.y < EPS_SQ)
+        return Particle{pos, k4};
+
+    k4 = k4.normalized() * step_size;
 
     Vec2 new_pos = pos + (k1 + k2 * 2.0f + k3 * 2.0f + k4) * (1.0f / 6.0f);
     return Particle{new_pos, data->interpolate(new_pos)};
