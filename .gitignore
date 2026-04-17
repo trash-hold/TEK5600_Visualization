@@ -1,3 +1,4 @@
 **/build/*
 temp.md
 *.vscode/*
+*_old.cpp
