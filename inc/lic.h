@@ -7,4 +7,7 @@
 #include "integrators.h"
 #include "helpers.h"
 
-PixelPlane simpleLIC(const RawData* data, const float& step_size ,const size_t& kernel_length);
+template <typename F>
+PixelPlane simpleLIC(const RawData* data, const float& step_size, const size_t& kernel_length, F integrator);
+template <typename F2>
+PixelPlane simpleScaledLIC(const RawData* data, const size_t &scale_factor, const float& step_size, const size_t& kernel_length, F2 integrator);

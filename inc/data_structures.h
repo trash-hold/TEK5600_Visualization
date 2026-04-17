@@ -81,21 +81,25 @@ struct RawData{
 struct PixelPlane{
     size_t n_rows, n_cols;
     std::vector<float> value;   // Flattened 2D array
-    
+    size_t scaling_factor = 1;
     const float eps = 1e-4f;
     
-    float at(size_t i, size_t j) const {
+    float at(const size_t& i, const size_t& j) const {
         if (i >= n_rows || j >= n_cols || i < 0 || j < 0) {
             throw std::out_of_range("Index out of bounds");
         }
         return value[i * n_cols + j];
     }
 
-    void set(size_t i, size_t j, float val) {
+    void set(const size_t& i, const size_t& j, const float& val) {
         if (i >= n_rows || j >= n_cols || i < 0 || j < 0) {
             throw std::out_of_range("Index out of bounds");
         }
         value[i * n_cols + j] = val;
+    }
+
+    Vec2 scalePosition(const Vec2 pos) const {
+        return {pos.x * scaling_factor, pos.y * scaling_factor};
     }
 
     float bi_interpolate(const float &v00, const float& v01, const float& v10, const float& v11, const float &x_frac, const float &y_frac) const {
