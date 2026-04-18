@@ -35,7 +35,7 @@ int main(){
     RawData data;
 
     // Read file
-    readH5File(isabel_file, &data);
+    readH5File(isabel_file, &data, true);
 
     // Generate seeds
     std::vector<Particle> seeds = getUniformSeed(&data, 20);

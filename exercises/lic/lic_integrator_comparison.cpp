@@ -27,44 +27,45 @@ using IntegratorFunc = std::vector<Line> (*)(const std::vector<Particle>*, const
 
 void runLICComparison(const RawData* data, const std::filesystem::path& output_dir, const std::string& dataset_name) {
     // Parameters for sweeps
-    std::vector<float> step_sizes = {5.0f};
-    size_t constant_kernel_length = 1;
+    std::vector<float> step_sizes = {1.0f};
+    float constant_length = 2.0;
 
-    std::vector<size_t> kernel_lengths = {5, 10, 20};
-    float constant_step_size = 5.0f;
-    size_t num_runs = 5;
+    std::vector<size_t> kernel_lengths = {1, 5, 10, 20};
+    float constant_step_size = 0.2f;
+    size_t num_runs = 1;
 
     // Integrators
     std::vector<std::pair<std::string, IntegratorFunc>> integrators = {
-        {"euler", eulerIntegrator}
-        //{"rk4", rk4Integrator}
+        //{"euler", eulerIntegrator},
+        {"rk4", rk4Integrator}
     };
 
     // Sweep 1: Varying step_size, constant kernel_length
-    std::cout << "Sweep 1: Varying step_size, kernel_length = " << constant_kernel_length << std::endl;
+    std::cout << "Sweep 1: Varying step_size, kernel_length = " << constant_length << std::endl;
     for (float step_size : step_sizes) {
         for (auto& integrator_pair : integrators) {
             std::string integrator_name = integrator_pair.first;
             auto integrator = integrator_pair.second;
 
+            size_t max_steps = static_cast<size_t>(constant_length / step_size);
             // Measure time over num_runs
-            double total_time = 0.0;
-            for (size_t run = 0; run < num_runs; ++run) {
-                auto start = std::chrono::high_resolution_clock::now();
-                //PixelPlane result = simpleScaledLIC(data, 3, step_size, constant_kernel_length, integrator);
-                PixelPlane result = simpleLIC(data, step_size, constant_kernel_length, integrator);
-                auto end = std::chrono::high_resolution_clock::now();
-                std::chrono::duration<double> elapsed = end - start;
-                total_time += elapsed.count();
-            }
-            double avg_time = total_time / num_runs;
-            std::cout << "  Step size: " << step_size << ", Integrator: " << integrator_name << ", Avg time: " << avg_time << " s" << std::endl;
+            // double total_time = 0.0;
+            // for (size_t run = 0; run < num_runs; ++run) {
+            //     auto start = std::chrono::high_resolution_clock::now();
+            //     //PixelPlane result = simpleScaledLIC(data, 3, step_size, constant_kernel_length, integrator);
+            //     PixelPlane result = simpleLIC(data, step_size, max_steps, integrator);
+            //     auto end = std::chrono::high_resolution_clock::now();
+            //     std::chrono::duration<double> elapsed = end - start;
+            //     total_time += elapsed.count();
+            // }
+            // double avg_time = total_time / num_runs;
+            // std::cout << "  Step size: " << step_size << ", Integrator: " << integrator_name << ", Avg time: " << avg_time << " s" << std::endl;
 
             // Run once to save image
-            PixelPlane result = simpleScaledLIC(data, 3, step_size, constant_kernel_length, integrator);
+            PixelPlane result = simpleLIC(data,step_size, max_steps, integrator);
             sf::Image lic_image;
             createGSImage(&result, &lic_image);
-            std::string filename = dataset_name + "_lic_step_" + std::to_string(step_size) + "_kl_" + std::to_string(constant_kernel_length) + "_" + integrator_name + ".png";
+            std::string filename = dataset_name + "_lic_step_" + std::to_string(step_size) + "_kl_" + std::to_string(max_steps) + "_" + integrator_name + ".png";
             if (!lic_image.saveToFile((output_dir / filename).string())) {
                 std::cerr << "Failed to save image: " << filename << std::endl;
             }
@@ -79,21 +80,21 @@ void runLICComparison(const RawData* data, const std::filesystem::path& output_d
             auto integrator = integrator_pair.second;
 
             // Measure time over num_runs
-            double total_time = 0.0;
-            for (size_t run = 0; run < num_runs; ++run) {
-                auto start = std::chrono::high_resolution_clock::now();
-                //PixelPlane result = simpleScaledLIC(data, 3, constant_step_size, kernel_length, integrator);
-                PixelPlane result = simpleLIC(data, constant_step_size, constant_kernel_length, integrator);
+            // double total_time = 0.0;
+            // for (size_t run = 0; run < num_runs; ++run) {
+            //     auto start = std::chrono::high_resolution_clock::now();
+            //     //PixelPlane result = simpleScaledLIC(data, 3, constant_step_size, kernel_length, integrator);
+            //     PixelPlane result = simpleLIC(data, constant_step_size, kernel_length, integrator);
                 
-                auto end = std::chrono::high_resolution_clock::now();
-                std::chrono::duration<double> elapsed = end - start;
-                total_time += elapsed.count();
-            }
-            double avg_time = total_time / num_runs;
-            std::cout << "  Kernel length: " << kernel_length << ", Integrator: " << integrator_name << ", Avg time: " << avg_time << " s" << std::endl;
+            //     auto end = std::chrono::high_resolution_clock::now();
+            //     std::chrono::duration<double> elapsed = end - start;
+            //     total_time += elapsed.count();
+            // }
+            // double avg_time = total_time / num_runs;
+            // std::cout << "  Kernel length: " << kernel_length << ", Integrator: " << integrator_name << ", Avg time: " << avg_time << " s" << std::endl;
 
             // Run once to save image
-            PixelPlane result = simpleScaledLIC(data, 3, constant_step_size, kernel_length, integrator);
+            PixelPlane result = simpleLIC(data, constant_step_size, kernel_length, integrator);
             sf::Image lic_image;
             createGSImage(&result, &lic_image);
             std::string filename = dataset_name + "_lic_step_" + std::to_string(constant_step_size) + "_kl_" + std::to_string(kernel_length) + "_" + integrator_name + ".png";
@@ -110,9 +111,10 @@ int main() {
     RawData data;
 
     // Read file
-    readH5File(isabel_file, &data);
-    std::string dataset_name = "Kernel_Isabel";
-    const std::filesystem::path output_dir = "../exercises/lic/img/kernel";
+    //readH5File(isabel_file, &data, true);
+    readH5File(metsim_file, &data);
+    std::string dataset_name = "metsim";
+    const std::filesystem::path output_dir = "../exercises/lic/img/";
     std::filesystem::create_directories(output_dir);
 
     runLICComparison(&data, output_dir, dataset_name);

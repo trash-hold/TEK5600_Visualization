@@ -33,10 +33,11 @@ int main(){
 
     // Read file
     readH5File(metsim_file, &data);
+    //readH5File(isabel_file, &data, true);
 
     // Run LIC
-    //PixelPlane lic_result = simpleLIC(&data, 0.1f, 30, rk4Integrator);
-    PixelPlane lic_result = simpleScaledLIC(&data, 5, 0.1f, 30, rk4Integrator);
+    PixelPlane lic_result = simpleLIC(&data, 3.0f, 10, rk4Integrator);
+    //PixelPlane lic_result = simpleScaledLIC(&data, 5, 0.1f, 30, rk4Integrator);
 
     // Prepare objects for visualization
     sf::Image lic_image;

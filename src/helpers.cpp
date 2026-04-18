@@ -4,7 +4,7 @@
 
 using namespace H5;
 
-void readH5File(const std::string& filename, RawData* data){
+void readH5File(const std::string& filename, RawData* data, bool swtich_index){
     try {
         // Open file in read-only mode
         H5File file(filename, H5F_ACC_RDONLY);
@@ -12,6 +12,14 @@ void readH5File(const std::string& filename, RawData* data){
         // There are two datasets in both files:
         DataSet x_dataset = file.openDataSet("/Velocity/X-comp");
         DataSet y_dataset = file.openDataSet("/Velocity/Y-comp");
+
+        // Datasets can have column or row major saving, adjust the swtich_index parameter then
+        if(swtich_index == true)
+        {
+            DataSet temp = x_dataset;
+            x_dataset = y_dataset;
+            y_dataset = temp;
+        }
 
         // Getting size of the datasets (assuming both datasets have the same dimensions)
         hsize_t dims[2];
