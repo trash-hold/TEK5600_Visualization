@@ -48,54 +48,47 @@ int main() {
     std::cout << "Starting field lines method comparison..." << std::endl;
 
     RawData data;
-    std::string name = "metsim";
-    readH5File(metsim_file, &data);
+    std::string name = "test";
+    readH5File(isabel_file, &data, true);
 
-    const float step_size = 0.1f; // constant
+    const float step_size = 0.5f; // constant
 
     // Different parameter sets for each method
     
-    /*
-    // Isabel dataset settings
+    
+    //Isabel dataset settings
     const std::vector<RandomParams> random_params = {
-        {100, 0.001f},
-        {200, 0.001f},
-        {500, 0.001f},
-        {800, 0.001f}
+        {500, 1.0f/(25*25)},
+        {500, 1.0f/(50*50)},
+        {500, 1.0f/(75.0f*75)}
     };
     const std::vector<UniformParams> uniform_params = {
-        {100, 25},
-        {200, 25},
         {500, 25},
-        {800, 25}
+        {500, 50},
+        {500, 75}
     };
     const std::vector<EvenParams> even_params = {
-        {100, 5.0f},
-        {200, 5.0f},
         {500, 5.0f},
-        {800, 5.0f}
+        {500, 15.0f},
+        {500, 10.0f}
     };
-    */
-
-    // Metsim dataset settings
-    const std::vector<RandomParams> random_params = {
-        {100, 0.01f},
-        {200, 0.01f},
-        {500, 0.01f},
-        {800, 0.01f}
-    };
-    const std::vector<UniformParams> uniform_params = {
-        {100, 10},
-        {200, 10},
-        {500, 10},
-        {800, 10}
-    };
-    const std::vector<EvenParams> even_params = {
-        {100, 2.0f},
-        {200, 2.0f},
-        {500, 2.0f},
-        {800, 2.0f}
-    };
+    
+    // // Metsim dataset settings
+    // const std::vector<RandomParams> random_params = {
+    //     {500, 1.0f/(10.0f*10.0f)},
+    //     {500, 1.0f/(15.0f*15.0f)},
+    //     {500, 1.0f/(20.0f*20.0f)},
+    // };
+    // const std::vector<UniformParams> uniform_params = {
+    //     {500, 10},
+    //     {500, 15},
+    //     {500, 20}
+    // };
+    // const std::vector<EvenParams> even_params = {
+    //     {500, 2.0f},
+    //     {500, 4.0f},
+    //     {500, 6.0f}
+    // };
 
 
     const std::filesystem::path output_dir = "../exercises/field_lines/img";
@@ -138,14 +131,16 @@ int main() {
     };
 
     // Method 1: Random seed + RK4
+    size_t index =0;
     for (const auto& params : random_params) {
         std::cout << "Random + RK4: max_steps=" << params.max_steps << ", particle_percentage=" << params.particle_percentage << std::endl;
         std::vector<Particle> seeds = getRandomSeed(&data, params.particle_percentage);
         std::vector<Line> field_lines = rk4Integrator(&seeds, &data, step_size, params.max_steps);
-        std::string filename = name + "_random_rk4_max" + std::to_string(params.max_steps) + "_pct" + std::to_string(static_cast<int>(params.particle_percentage * 100)) + ".png";
+        std::string filename = name + "_random_rk4_max" + std::to_string(params.max_steps) + "_pct" + std::to_string(index)+ ".png";
         if (renderAndSave(field_lines, filename)) {
             std::cout << "  Saved " << filename << std::endl;
         }
+        index++;
     }
 
     // Method 2: Uniform seed + RK4

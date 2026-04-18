@@ -54,7 +54,7 @@ sf::Color getInfernoColor(float value) {
     uint8_t r = static_cast<uint8_t>(c1.r + frac * (c2.r - c1.r));
     uint8_t g = static_cast<uint8_t>(c1.g + frac * (c2.g - c1.g));
     uint8_t b = static_cast<uint8_t>(c1.b + frac * (c2.b - c1.b));
-    return sf::Color(r, g, b, 170); // alpha 200 for lowered opacity
+    return sf::Color(r, g, b, 200); // alpha 200 for lowered opacity
 }
 
 sf::ConvexShape createArrowHead(const Vec2& position, const Vec2& direction, float length, float width, const sf::Color& color) {
@@ -103,10 +103,11 @@ int main(){
     RawData data;
 
     // Read file
-    readH5File(metsim_file, &data);
+    readH5File(isabel_file, &data, true);
 
     // Generate evenly spaced field lines
-    std::vector<Line> field_lines = getEvenSeed(&data, 2.0f, 0.2f, 600);
+    //std::vector<Line> field_lines = getEvenSeed(&data, 2.0f, 0.2f, 600);
+    std::vector<Line> field_lines = getEvenSeed(&data, 6.0f, 0.5f, 200);
 
     // Create PixelPlane for velocity magnitude
     PixelPlane magnitude_plane;
@@ -194,9 +195,9 @@ int main(){
                 }
 
                
-                if (direction.length() >= 1e-6f && count%5 == 6) {
-                    float arrow_length = 1.8f*1;
-                    float arrow_width = 1.2f*1;
+                if (direction.length() >= 1e-6f && count%5 == 0) {
+                    float arrow_length = 1.8f*1.7;
+                    float arrow_width = 1.2f*1.7;
                     sf::ConvexShape arrow = createArrowHead(tail.position, direction, arrow_length, arrow_width, sf::Color(25, 25, 25, 255));
                     if (arrow.getPointCount() == 3) {
                         window.draw(arrow);

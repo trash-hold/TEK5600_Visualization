@@ -202,6 +202,7 @@ int main() {
 
     RawData data;
     readH5File(metsim_file, &data);
+    //readH5File(isabel_file, &data, true);
 
     std::cout << data.n_rows << " x " << data.n_cols << std::endl;
 
@@ -210,7 +211,7 @@ int main() {
     
     
     //For Metasim
-    PixelPlane lic_result = simpleScaledLIC(&data, 5, 0.1f, 30, rk4Integrator);
+    PixelPlane lic_result = simpleScaledLIC(&data, 2, 0.5f, 20, rk4Integrator);
 
     // For Isabel
     //PixelPlane lic_result = simpleScaledLIC(&data, 2, 0.5f, 10, rk4Integrator);
